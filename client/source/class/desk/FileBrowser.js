@@ -368,6 +368,22 @@ qx.Class.define("desk.FileBrowser",
 			}				
 		},
 
+		__sliceViewSimpleAction : function (node) {
+			if (this.__isNodeLeaf(node)) {
+				new desk.SliceViewSimple(this.__getNodeFile(node));
+			} else {
+				alert("Cannot view a directory!");
+			}
+		},
+
+		__dicomSimpleSliceViewAction : function (node) {
+			if (!this.__isNodeLeaf(node)) {
+				new desk.DicomSimpleSliceView(this.__getNodeFile(node));
+			} else {
+				alert("Can just view a directory!");
+			}
+		},
+
 		__volViewSimpleAction : function (node) {
 			if (this.__isNodeLeaf(node)) {
 				new desk.VolViewSimple(this.__getNodeFile(node));
@@ -514,6 +530,8 @@ qx.Class.define("desk.FileBrowser",
 			if (desk.Actions.getInstance().getPermissionsLevel()<1)
 				return;
 
+			this.addAction("DicomSimpleSliceView", this.__dicomSimpleSliceViewAction, this);
+			this.addAction("SliceViewSimple", this.__sliceViewSimpleAction, this);
 			this.addAction("VolViewSimple", this.__volViewSimpleAction, this);
 			this.addAction("download", this.__downloadAction, this);
 			this.addAction("upload", this.__uploadAction, this);
