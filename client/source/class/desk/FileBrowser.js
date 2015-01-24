@@ -456,16 +456,16 @@ qx.Class.define("desk.FileBrowser",
 		},
 
 		__sliceViewSimpleAction : function (node) {
-			if (this.__isNodeLeaf(node)) {
-				new desk.SliceViewSimple(this.__getNodeFile(node));
+			if (!node.getChildren) {
+				new desk.SliceViewSimple(node.getFullName());
 			} else {
 				alert("Cannot view a directory!");
 			}
 		},
 
 		__dicomSimpleSliceViewAction : function (node) {
-			if (!this.__isNodeLeaf(node)) {
-				new desk.DicomSimpleSliceView(this.__getNodeFile(node));
+			if (node.getChildren) {
+				new desk.DicomSimpleSliceView(node.getFullName());
 			} else {
 				alert("Can just view a directory!");
 			}
