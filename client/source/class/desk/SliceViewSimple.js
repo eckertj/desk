@@ -162,6 +162,8 @@ qx.Class.define("desk.SliceViewSimple",
 
           this.debug("load slide with index " + value);
           var image = new qx.ui.basic.Image(desk.FileSystem.getFileURL(response.outputDirectory + 'file.png'));
+          image.setMaxWidth(500);
+          image.setMaxHeight(500);
 
           image.addListener("loaded", function() {
             this.__pictureContainer.removeAll();
