@@ -48,12 +48,20 @@ qx.Class.define("desk.AceContainer", {
             this.__mode = mode;
 		},
 
+		/**
+		 * callback launched when the container appears on screen
+		 */
 		__onAppear : function() {
 			var editor = this.__ace = ace.edit(this.__editor.getContentElement().getDomElement());
 			this.__editor.addListener("resize", this.__onResize, this);
 			if (this.__mode) {
-                this.__ace.getSession().setMode('ace/mode/' + this.__mode);
+				this.__ace.getSession().setMode('ace/mode/' + this.__mode);
+				this.__ace.setOptions({
+					enableBasicAutocompletion: true,
+					enableLiveAutocompletion: true
+				});
 			}
+
 			this.setFontSize(this.__fontSize);
 			this.__onResize();
 		},
@@ -71,6 +79,9 @@ qx.Class.define("desk.AceContainer", {
 			return this.__ace;
 		},
 
+		/**
+		 * callback launched when the container is resized
+		 */
 		__onResize : function () {
 			setTimeout(function() {
 				this.__ace.resize();

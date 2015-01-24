@@ -11,6 +11,11 @@ qx.Class.define("desk.SliceView",
 	extend : desk.ThreeContainer,
 	include : desk.LinkMixin,
 
+	/**
+	 * Constructor
+	 * @param orientation {Integer} slice orientation : 0,1 or 2
+	 * @param options {Object} options : {textColor : "yellow"}
+	 */
 	construct : function(orientation, options) {
 		this.base(arguments);
 		this.__slices = [];
@@ -25,7 +30,7 @@ qx.Class.define("desk.SliceView",
 	},
 
 	destruct : function(){
-		this.removeVolumes(this.__slices);
+		this.removeAllVolumes();
 		this.unlink();
 		//clean the scene
 		qx.util.DisposeUtil.destroyContainer(this.__rightContainer);
@@ -43,6 +48,7 @@ qx.Class.define("desk.SliceView",
 	},
 
 	properties : {
+
 		/** current display slice */
 		slice : { init : 0, check: "Number", event : "changeSlice", apply : "__applyChangeSlice"},
 
@@ -51,7 +57,6 @@ qx.Class.define("desk.SliceView",
 
 		/** paint opacity (betwen 0 and 1) */
 		paintOpacity : { init : 1, check: "Number", event : "changePaintOpacity"},
-		orientPlane : { init : "", check: "String", event : "changeOrientPlane"},
 
 		/** is the interaction mode set to paint mode*/
 		paintMode : { init : false, check: "Boolean", event : "changePaintMode", apply : "__applyPaintMode"},
@@ -64,24 +69,32 @@ qx.Class.define("desk.SliceView",
 	},
 
 	events : {
+		/**
+		 * Fired whenever the drawing has changed
+		 */
 		"changeDrawing" : "qx.event.type.Event",
-		"changeCrossPosition" : "qx.event.type.Event",
-		"viewMouseDown" : "qx.event.type.Event",
-		"viewMouseMove" : "qx.event.type.Event",
-		"viewMouseOver" : "qx.event.type.Event",
-		"viewMouseOut" : "qx.event.type.Event",
-		"viewMouseUp" : "qx.event.type.Event",
-		"viewMouseClick" : "qx.event.type.Event",
-		"viewMouseWheel" : "qx.event.type.Event"
+
+		/**
+		 * Fired whenever the cross position changes
+		 */
+		"changeCrossPosition" : "qx.event.type.Event"
 	},
 
 	members : {
+		/**
+		 * Returns true if the view is active (if the mouse pointer is over this view)
+		 * @return {boolean} true/false depending on the mouse pointer position
+		 */
 		isViewOn : function () {
 			return this.__viewOn;
 		},
 
 		__viewOn : false,
 
+		/**
+		 * called whenever erase mode is changed
+		 * @param mode {Boolean} new erase mode
+		 */
 		__applyEraseMode : function (mode) {
 			this.__initDrawing();
 			if (mode) {
@@ -90,6 +103,10 @@ qx.Class.define("desk.SliceView",
 			}
 		},
 
+		/**
+		 * called whenever paint mode is changed
+		 * @param mode {Boolean} new paint mode
+		 */
 		__applyPaintMode : function (mode) {
 			this.__initDrawing();
 			if (mode) {
@@ -100,7 +117,11 @@ qx.Class.define("desk.SliceView",
 
 		__orientation : 0,
 
-		getOrientation : function () {
+		/**
+		 * Returns the viewer orientation
+		 * @return {Integer} orientation
+		 */
+		 getOrientation : function () {
 			return this.__orientation;
 		},
 
@@ -126,51 +147,104 @@ qx.Class.define("desk.SliceView",
 
 		__textColor : null,
 
+		/**
+		 * Returns the 2D projection on slice of the 3D input position
+		 * @param x {Float} x coordinate
+		 * @param y {Float} y coordinate
+		 * @param z {Float} z coordinate
+		 * @return {Object} coordinates in an object like {x : 10, y : 100}
+		 */
 		projectOnSlice : function (x, y, z) {
 			var indices = desk.VolumeSlice.indices;
 			return {x : indices.x[this.__orientation],
 				y : indices.y[this.__orientation]};
 		},
 
+		/**
+		 * Returns the 2D dimensions
+		 * @return {Array} array of dimensions
+		 */
 		getVolume2DDimensions : function() {
 			return this.__2DDimensions;
 		},
-		
+
+		/**
+		 * Returns the 2D spacing
+		 * @return {Array} array of spacings
+		 */
 		getVolume2DSpacing : function() {
 			return this.__2DSpacing;
 		},
-		
+
+		/**
+		 * Returns the 2D origin
+		 * @return {Array} array of origins
+		 */
+		getVolume2DOrigin : function() {
+			return this.__2DCornersCoordinates.slice(0,2);
+		},
+
+		/**
+		 * Returns the 2D coordinates of the slice corners
+		 * @return {Array} array of coordinates
+		 */
 		get2DCornersCoordinates : function() {
 			return this.__2DCornersCoordinates;
 		},
-		
+
+		/**
+		 * Returns the container used for displaying the slider
+		 * @return {qx.ui.container.Composite} the container
+		 */
 		getRightContainer : function () {
 			return this.__rightContainer;
 		},
 
+		/**
+		 * Returns the canvas where the user can draw
+		 * @return {qx.ui.embed.Canvas} the drawing canvas
+		 */
 		getDrawingCanvas : function () {
 			this.__initDrawing();
 			return this.__drawingCanvas;
 		},
 
+		/**
+		 * Returns the mesh displaying the drawing in the scene
+		 * @return {THREE.Mesh} the drawing mesh
+		 */
         getDrawingMesh : function () {
 			this.__initDrawing();
 			return this.__drawingMesh;
 		},
 
+		/**
+		 * updates the view after the drawing canvas is modified
+		 */
+		updateDrawingCanvas : function () {
+			this.fireEvent("changeDrawing");
+		},
+
+		/**
+		 * informs whether the drawing canvas has been modified or not
+		 * @return {Boolean} true/false
+		 */
 		isDrawingCanvasModified : function () {
 			return this.__drawingCanvasModified;
 		},
 
+		/**
+		 * resets canvas modification flag
+		 */
 		setDrawingCanvasNotModified : function () {
-			this.__drawingCanvasModified=false;
+			this.__drawingCanvasModified = false;
 		},
 
 		/**
 		 * Returns the first slice present in the view. This slice defines
 		 * the volume bounding box, spacing etc..
 		 * @return {desk.VolumeSlice} first volume slice present in the view.
-		 * Returns 'null' if no slice is present
+		 *  Returns 'null' if no slice is present
 		*/
 		getFirstSlice : function () {
 			return _.find(this.__slices, function (slice) {
@@ -178,12 +252,20 @@ qx.Class.define("desk.SliceView",
 			});
 		},
 
+		/**
+		 * Sets paint color
+		 * @param color {Color}
+		 */
 		setPaintColor : function (color) {
 			this.__initDrawing();
 			this.__paintColor = color;
 			this.__updateBrush();
 		},
 
+		/**
+		 * Sets paint width (in pixels)
+		 * @param width {Integer} paint width (in pixels)
+		 */
 		setPaintWidth : function (width) {
 			this.__initDrawing();
 			this.__paintWidth = width;
@@ -191,8 +273,15 @@ qx.Class.define("desk.SliceView",
 		},
 
 		/**
+		 * Removes all volumes from the view.
+		*/
+		removeAllVolumes : function () {
+			this.removeVolumes(this.__slices.map(function (o) {return o;}));
+		},
+
+		/**
 		 * Removes a volume from the view.
-		 * @param slices {desk.VolumeSlice} slice to remove
+		 * @param slice {desk.VolumeSlice} slice to remove
 		*/
 		removeVolume : function (slice) {
 			if (!_.contains(this.__slices, slice)) return;
@@ -281,10 +370,18 @@ qx.Class.define("desk.SliceView",
 			});
 		},
 
+		/**
+		 * returns the array of orientation overlays
+		 * @return {Array} array of orientation labels
+		 */
 		getOverLays : function() {
 			return this.__directionOverlays;
 		},
 		
+		/**
+		 * returns the UI container containing orientation controls
+		 * @return {qx.ui.container.Composite} orientation container
+		 */
 		getReorientationContainer : function () {
 			if (this.__reorientationContainer) {
 				return this.__reorientationContainer;
@@ -312,6 +409,9 @@ qx.Class.define("desk.SliceView",
 			return container;
 		},
 
+		/**
+		 * duplicates camera position on all linked views
+		 */
 		propagateCameraToLinks : function () {
 			this.getLinks().forEach(function (link) {
 				if (this === link) return;
@@ -322,12 +422,20 @@ qx.Class.define("desk.SliceView",
 			}, this);
 		},
 
+		/**
+		 * fired after each camera Z change
+		 * @param z {Float} the new z cordinate
+		 */
 		__applyCameraZ : function (z) {
 			this.getCamera().position.z = z;
 			this.getControls().update();
 			this.render();
 		},
 
+		/**
+		 * creates the blue cross meshes
+		 * @param volumeSlice {desk.VolumeSlice} the reference slice
+		 */
 		__createCrossMeshes : function (volumeSlice) {
 			var coord = volumeSlice.get2DCornersCoordinates();
 			var material = new THREE.LineBasicMaterial({color : 0x4169FF,
@@ -355,6 +463,10 @@ qx.Class.define("desk.SliceView",
 		__coordinatesRatio : null,
 		__brushCanvas : null,
 
+		/**
+		 * creates the brush mesh
+		 * @param volumeSlice {desk.VolumeSlice} the reference slice
+		 */
 		__createBrushMesh : function (volumeSlice) {
 			var geometry = new THREE.PlaneBufferGeometry( 1, 1);
 			var coordinates = volumeSlice.get2DCornersCoordinates();
@@ -391,6 +503,9 @@ qx.Class.define("desk.SliceView",
 			this.getScene().add(mesh);
 		},
 
+		/**
+		 * refreshes the brush according to the color and width
+		 */
 		__updateBrush : function() {
 			var canvas = this.__brushCanvas;
 			var ctx = canvas.getContext2d();
@@ -437,6 +552,10 @@ qx.Class.define("desk.SliceView",
 			positions.needsUpdate = true;
 		},
 
+		/**
+		 * creates the drawing mesh
+		 * @param volumeSlice {desk.VolumeSlice} the reference slice
+		 */
 		__setDrawingMesh : function (volumeSlice) {
 			var geometry = new THREE.PlaneBufferGeometry(1, 1);
 			var coords = volumeSlice.get2DCornersCoordinates();
@@ -503,7 +622,13 @@ qx.Class.define("desk.SliceView",
 		// listeners Ids to get rid of when changing drawing canvas
 		__drawingListeners : null,
 
-		__addSlice : function (volumeSlice, parameters, callback) {
+		/**
+		 * adds a slice to the scene
+		 * @param volumeSlice {desk.VolumeSlice} the slice to add
+		 * @param callback {Function} callback when done
+		 * @param context {Object} optional callback context
+		 */
+		__addSlice : function (volumeSlice, callback, context) {
 			var geometry = new THREE.PlaneBufferGeometry(1, 1);
 			var coords = volumeSlice.get2DCornersCoordinates();
 			var vertices = geometry.attributes.position;
@@ -527,9 +652,7 @@ qx.Class.define("desk.SliceView",
 
 			volumeSlice.addListenerOnce('changeImage',function () {
 				this.getScene().add(mesh);
-				if (typeof callback === "function") {
-					callback(volumeSlice);
-				}
+				callback.call(context);
 			}, this);
 
 			volumeSlice.addListener('changeImage', function () {
@@ -544,6 +667,9 @@ qx.Class.define("desk.SliceView",
 
 		__initDrawingDone : false,
 
+		/**
+		 * Initializes drawing
+		 */
 		__initDrawing : function () {
 			if (this.__initDrawingDone) return;
 			var volumeSlice = this.getFirstSlice();
@@ -552,6 +678,10 @@ qx.Class.define("desk.SliceView",
 			this.__initDrawingDone = true;
 		},
 
+		/**
+		 * Inits all objects from given slice
+		 * @param slice {desk.VolumeSlice} first slice
+		 */
 		__initFromVolume : function (slice) {
 			this.__initDrawingDone = false;
 			this.__slider.setMaximum(slice.getNumberOfSlices() - 1);
@@ -588,11 +718,19 @@ qx.Class.define("desk.SliceView",
 
 		/** adds a volume to the view
 		 * @param file {String} : file to add
-		 * @param parameters {Object} : parameters
-		 * @param callback {Function} : callback when done
+		 * @param parameters {Object} : optional parameters
+		 * @param callback {Function} : node.js-style callback when done
+		 * @param context {Object} : optional callback context
 		 * @return {desk.VolumeSlice} : displayed volume
 		 */
-		addVolume : function (file, parameters, callback) {
+		addVolume : function (file, parameters, callback, context) {
+			if (typeof parameters === "function") {
+				callback = parameters;
+				context = callback;
+				parameters = {};
+			}
+			callback = callback || function () {};
+
 			var firstSlice = this.__slices.every(function (slice) {
 				return slice.getUserData('toDelete') === true;
 			});
@@ -606,14 +744,19 @@ qx.Class.define("desk.SliceView",
 					}
 					if (firstSlice) {this.__initFromVolume(slice);}
 					slice.setSlice(this.getSlice());
-					this.__addSlice(slice, parameters, callback);
+					this.__addSlice(slice, callback, context);
 			}, this);
 			this.__slices.push(slice);
 			return slice;
 		},
 
+		/** 
+		 * Sets the cross position given mouse event
+		 * @param event {qx.event.type.Mouse} mouse event
+		 */
 		__setCrossPositionFromEvent : function (event) {
 			var position = this.getPositionOnSlice(event);
+			if (!position) return;
 
 			var v = [position.i, position.j].map(function (v, index) {
 				return Math.max(0, Math.min(this.__2DDimensions[index] - 1, v));
@@ -627,10 +770,18 @@ qx.Class.define("desk.SliceView",
 
 		__position : [],
 
+		/** 
+		 * Return the cross position i.e. i,j,k coordinates
+		 * @return {Array} ijk coordinates
+		 */
 		getCrossPosition : function () {
 			return this.__position;
 		},
 
+		/** 
+		 * Sets the cross position i.e. i,j,k coordinates
+		 * @param pos {Array} ijk coordinates
+		 */
 		setCrossPosition : function (pos) {
 			if ((this.__position[0] === pos[0]) &&
 				(this.__position[1] === pos[1]) &&
@@ -670,7 +821,11 @@ qx.Class.define("desk.SliceView",
 		* */
 		__interactionMode : -1,
 
-		__onMouseDown : function (e) {
+		/** 
+		 * fired at each mouse down event
+		 * @param e {qx.event.type.Mouse} mouse event
+		 */
+		 __onMouseDown : function (e) {
 			this.capture();
 			var controls = this.getControls();
 			this.__interactionMode = 0;
@@ -710,7 +865,7 @@ qx.Class.define("desk.SliceView",
 				ctx.closePath();
 				ctx.stroke();
 				this.__drawingCanvasModified = true;
-				this.fireEvent("changeDrawing");
+				this.updateDrawingCanvas();
 			} else if (this.isEraseMode()) {
 				this.__interactionMode = 4;
 				this.__saveDrawingToUndoStack();
@@ -722,13 +877,16 @@ qx.Class.define("desk.SliceView",
 				this.__drawingCanvas.getContext2d().clearRect(
 					x - radius, y - radius, width, width);
 				this.__drawingCanvasModified = true;
-				this.fireEvent("changeDrawing");
+				this.updateDrawingCanvas();
 			} else {
 				this.__setCrossPositionFromEvent(e);
 			}
-			this.fireDataEvent("viewMouseDown", e);
 		},
 
+		/** 
+		 * fired at each mouse out event
+		 * @param event {qx.event.type.Mouse} mouse event
+		 */
 		__onMouseOut : function (event) {
 			if (this.__sliderInUse) {return;}
 			this.__viewOn = false;
@@ -736,9 +894,12 @@ qx.Class.define("desk.SliceView",
 			this.__directionOverlays[3].setLayoutProperties({right: 1, top:"45%"});
 			if (this.__brushMesh) this.__brushMesh.visible = false;
 			this.render();
-			this.fireDataEvent("viewMouseOut",event);
 		},
 
+		/** 
+		 * fired at each mouse move event
+		 * @param event {qx.event.type.Mouse} mouse event
+		 */
 		__onMouseMove : function (event) {
 			this.__viewOn = true;
 			var controls = this.getControls();
@@ -786,7 +947,7 @@ qx.Class.define("desk.SliceView",
 				var ctx = this.__drawingCanvas.getContext2d();
 				ctx.lineTo(position.i + 0.5, position.j + 0.5);
 				ctx.stroke();
-				this.fireEvent("changeDrawing");
+				this.updateDrawingCanvas();
 				this.__drawingCanvasModified = true;
 				break;
 			case 4 :
@@ -801,13 +962,16 @@ qx.Class.define("desk.SliceView",
 				this.__drawingCanvas.getContext2d().clearRect(
 					x - radius, y - radius, width, width);
 				this.__drawingCanvasModified = true;
-				this.fireEvent("changeDrawing");
+				this.updateDrawingCanvas();
 				break;
 			}
 			event.preventDefault(); // Prevent cursor changing to "text" cursor while drawing
-			this.fireDataEvent("viewMouseMove",event);
 		},
 
+		/** 
+		 * fired at each mouse up event
+		 * @param event {qx.event.type.Mouse} mouse event
+		 */
 		__onMouseUp : function (event)	{
 			this.releaseCapture();
 			this.getControls().mouseUp();
@@ -822,21 +986,26 @@ qx.Class.define("desk.SliceView",
 					this.__paintWidth / 2, 0, 2 * Math.PI, false);
 				ctx.closePath();
 				ctx.fill();
-				this.fireEvent("changeDrawing");
+				this.updateDrawingCanvas();
 			}
 			this.__interactionMode = -1;
-			this.fireDataEvent("viewMouseUp",event);
 		},
 
+		/** 
+		 * fired at each mouse wheel event
+		 * @param event {qx.event.type.MouseWheel} mouse event
+		 */
 		__onMouseWheel : function (event) {
 			var delta = event.getWheelDelta() < 0 ? -1 : 1;
 			var slider = this.__slider;
 
 			slider.setValue(Math.min(slider.getMaximum(), Math.max(
 				slider.getValue() + delta, slider.getMinimum())));
-			this.fireDataEvent("viewMouseWheel",event);
 		},
 
+		/** 
+		 * setups all viewer listeners
+		 */
 		__setupInteractionEvents : function () {
 			this.addListener("mousedown", this.__onMouseDown, this);
 			this.addListener("mouseout", this.__onMouseOut, this);
@@ -852,6 +1021,11 @@ qx.Class.define("desk.SliceView",
 		__origin : null,
 		__spacing : null,
 		
+		/** 
+		 * returns the position from the mouse event
+		 * @param event {qx.event.type.Mouse} mouse event
+		 * @return {Object} coordinates  : ijk and xyz
+		 */
 		get3DPosition : function (event) {
 			var coordinates = this.getPositionOnSlice(event);
 			var slice = this.getSlice();
@@ -888,8 +1062,13 @@ qx.Class.define("desk.SliceView",
 			}
 		},
 		
+		/** 
+		 * returns the 2D position on slice
+		 * @param event {qx.event.type.Mouse} mouse event
+		 * @return {Object} coordinates  : ij and xy
+		 */
 		getPositionOnSlice : function (event) {
-			if (!this.__intersection) {return;}
+			if (!this.__intersection) {return {};}
 			var origin = this.getContentLocation();
 			var x = event.getDocumentLeft() - origin.left;
 			var y = event.getDocumentTop() - origin.top;
@@ -915,7 +1094,10 @@ qx.Class.define("desk.SliceView",
 			return {i :intxc, j :intyc, x:xinter, y:yinter};
 		},
 
-		__createUI : function (file) {
+		/** 
+		 * creates the UI
+		 */
+		__createUI : function () {
 			this.__drawingCanvas = new qx.ui.embed.Canvas().set({
 				syncDimension: true
 			});
@@ -981,6 +1163,10 @@ qx.Class.define("desk.SliceView",
 
 		__sliceLabel : null,
 
+		/** 
+		 * fired at each slice change
+		 * @param sliceId {Integer} the new slice id
+		 */
 		__applyChangeSlice : function (sliceId) {
 			this.__sliceLabel.setValue(sliceId + "");
 			// something fishy here : getNumberOfSlices should never be 0 but it is sometimes...
@@ -1003,6 +1189,10 @@ qx.Class.define("desk.SliceView",
 		__redoData : null,
 		__doingIndex : null,
 
+		/** 
+		 * fired each time ctrl-z is used
+		 * @param event {qx.event.type.KeyInput} keyboard event
+		 */
 		__onCtrlZ : function (event) {
 			if(!this.__viewOn) return;
 			var undoData = this.__undoData;
@@ -1020,9 +1210,13 @@ qx.Class.define("desk.SliceView",
 			var currData = undoData[doingIndex];
 			ctx.putImageData(currData, 0, 0);
 			this.__doingIndex = doingIndex - 1;
-			this.fireEvent("changeDrawing");
+			this.updateDrawingCanvas();
 		},
 
+		/** 
+		 * fired each time ctrl-y is used
+		 * @param event {qx.event.type.KeyInput} keyboard event
+		 */
 		__onCtrlY : function (event) {
 			if(! this.__viewOn) return;
 			var undoData = this.__undoData;
@@ -1037,18 +1231,21 @@ qx.Class.define("desk.SliceView",
 				ctx.putImageData(currData, 0, 0);
 				if(this.__doingIndex === undoData.length-1)
 					undoData.pop();
-				this.fireEvent("changeDrawing");
+				this.updateDrawingCanvas();
 			}
 			else {this.__doingIndex--;}
 		},
 
+		/** 
+		 * Setups undo framework
+		 */
 		__initUndo : function () {
 			this.__undoData = [];
 			this.__redoData = [];
 			this.__doingIndex = 0;
-			var undoCommand = new qx.ui.core.Command("Ctrl+Z");
+			var undoCommand = new qx.ui.command.Command("Ctrl+Z");
 			undoCommand.addListener("execute", this.__onCtrlZ, this);
-			var redoCommand = new qx.ui.core.Command("Ctrl+Y");
+			var redoCommand = new qx.ui.command.Command("Ctrl+Y");
 			redoCommand.addListener("execute", this.__onCtrlY, this);
 			this.addListener("changeSlice", function (event) {
 				this.__undoData = [];
@@ -1057,6 +1254,9 @@ qx.Class.define("desk.SliceView",
 			qx.util.DisposeUtil.disposeTriggeredBy(redoCommand, this);
 		},
 
+		/** 
+		 * Saves current drawing image to the stack
+		 */
 		__saveDrawingToUndoStack : function () {
 			var canvas = this.__drawingCanvas;
 			var image = canvas.getContext2d().getImageData(

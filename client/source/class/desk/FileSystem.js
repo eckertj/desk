@@ -22,7 +22,14 @@ qx.Class.define("desk.FileSystem",
 		* @param file {String} the file to load
 		* @param callback {Function} success callback, with request as first parameter
 		* @param context {Object} optional context for the callback
-		* @param forceText {Boolean} boolean to force response as text instead of json or xml
+		* @param options {Object} options which can be : 
+		* <pre class='javascript'>
+		* { <br>
+		*   cache : true/false // enable/disable cache (false by default) <br>
+		*   forceText : true/false // to force text output <br>
+		* }
+		* </pre>
+		* @param options {Object} boolean to force response as text instead of json or xml
 		* 
 		* <pre class='javascript'>
 		* example :<br>
@@ -111,7 +118,7 @@ qx.Class.define("desk.FileSystem",
 		* @return {string} file extension
 		* <pre class="javascript">
 		* example : <br>
-		* desk.FileSystem.getFileDirectory ('data/test/foo.txt');<br>
+		* desk.FileSystem.getFileDirectory('data/test/foo.txt'); <br>
 		* returns 'txt'<br>
 		* </pre>
 		*/
@@ -160,22 +167,40 @@ qx.Class.define("desk.FileSystem",
 		*
 		* @param directory {String} directory path
 		* @param iterator {Function} iterator applied to each file name
+		* @param asynchronous {Boolean} boolean to specify whether the iterator is an async one
 		* @param callback {Function} callback when done
 		* @param context {Object} optional context for the callback
 		* @ignore (async.queue)
 		*/
-		traverse : function (directory, iterator, callback, context) {
+		traverse : function (directory, iterator, asynchronous, callback, context) {
+			if (typeof asynchronous === "function") {
+				context = callback;
+				callback = asynchronous;
+				asynchronous = false;
+			}
+
 			var crawler = async.queue(function (directory, callback) {
-				desk.FileSystem.readDir(directory, function (files) {
-					files.forEach(function (file) {
-						var fullFile = directory + "/" + file.name;
-						if (file.isDirectory) {
-							crawler.push(fullFile);
-						} else {
-							iterator(fullFile)
-						}
-					});
-					callback();
+				desk.FileSystem.readDir(directory, function (err, files) {
+					if (err) {
+						console.warn("error while traversing directory " + directory);
+						console.warn(err);
+						
+					} else {
+						files.forEach(function (file) {
+							var fullFile = directory + "/" + file.name;
+							if (file.isDirectory) {
+								crawler.push(fullFile);
+								if (asynchronous) {
+									callback();
+								}
+							} else {
+								iterator(fullFile, callback)
+							}
+						});
+					}
+					if (!asynchronous) {
+						callback();
+					}
 				});
 			}, 4);
 
@@ -222,9 +247,7 @@ qx.Class.define("desk.FileSystem",
 		* @param context {Object} optional context for the callback
 		*/
 		exists : function (path, callback, context) {
-			desk.FileSystem.get('exists', {path : path}, function (result) {
-				callback.call(context, result.exists);
-			});
+			desk.FileSystem.get('exists', {path : path}, callback, context);
 		},
 
 		/**
@@ -275,12 +298,29 @@ qx.Class.define("desk.FileSystem",
 			myScriptLoader();
 		},
 
+		/**
+		* performs an xmlhttp GET request
+		* @param action {String} action path
+		* @param params {Object} requestData
+		* @param callback {Function} callback when done
+		* @param context {Object} optional context for the callback
+		*/
 		get : function (action, params, callback, context) {
-			desk.FileSystem.__xhr('GET', action, params, function (request) {
-				callback.call(context, JSON.parse(request.getResponseText()));
-			});		
+			desk.FileSystem.__xhr('GET', action, params, function (err, request) {
+				try { var obj = JSON.parse(request.getResponseText());}
+				catch(e) {err = e;}
+				callback.call(context, err, obj);
+			});
 		},
 
+		/**
+		* performs an xmlhttp request
+		* @param method {String} request method aka "GET" or "POST"
+		* @param action {String} action path
+		* @param requestData {Object} POST
+		* @param callback {Function} callback when done
+		* @param context {Object} optional context for the callback
+		*/
 		__xhr : function (method, action, requestData, callback, context) {
 			var fs = desk.FileSystem.getInstance();
 			var req = new qx.io.request.Xhr();
@@ -289,7 +329,11 @@ qx.Class.define("desk.FileSystem",
 			req.setMethod(method);
 			req.setAsync(true);
 			req.addListener('load', function (e) {
-				callback.call(context, e.getTarget());
+				callback.call(context, null, e.getTarget());
+				req.dispose();
+			});
+			req.addListener('error', function (e) {
+				callback.call(context, req.getResponse());
 				req.dispose();
 			});
 			req.send();
@@ -346,7 +390,7 @@ qx.Class.define("desk.FileSystem",
 
 			var directory = desk.FileSystem.getFileDirectory(file);
 			var shortFileName = desk.FileSystem.getFileName(file);
-			desk.FileSystem.readDir(directory, function (files) {
+			desk.FileSystem.readDir(directory, function (err, files) {
 				var sessions = [];
 				files.forEach(function (child) {
 					var childName = child.name;

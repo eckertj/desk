@@ -22,11 +22,19 @@ qx.Class.define("desk.FileField",
 	},
 
 	members : {
+        /**
+		* fired when a widget drag starts
+		* @param e {qx.event.type.Drag} drag event
+		*/
 		__onDragStart : function (e) {
 			e.addAction("copy");
 			e.addType("file");
 		},
 
+        /**
+		* fired when a drop is performed
+		* @param e {qx.event.type.Drag} drop event
+		*/
 		__onDropRequest : function(e) {
 			var type = e.getCurrentType();
 			switch (type) {

@@ -3,12 +3,14 @@
  */
 
 async    = require('async');
-_        = require('underscore');
+_        = require('lodash');
 operative = require('operative');
 io = require('socket.io-client');
 numeric = require('numeric');
 kdTree = require ('kdt');
 c3 = require ('c3');
+require ('./c3.css');
+Heap = require('heap');
 
 var ace = require('brace');
 require('brace/mode/c_cpp');
@@ -17,6 +19,7 @@ require('brace/mode/javascript');
 require('brace/mode/json');
 require('brace/theme/eclipse');
 require('brace/ext/searchbox');
+require("brace/ext/language_tools");
 
 var work = require('webworkify');
 

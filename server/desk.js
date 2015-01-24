@@ -1,5 +1,6 @@
 var	actions      = require(__dirname + '/lib/cl-rpc');
 	argv         = require('yargs').argv,
+	async        = require('async'),
 	auth         = require('basic-auth'),
 	bodyParser   = require('body-parser'),
 	browserify   = require('browserify-middleware'),
@@ -18,20 +19,16 @@ var	actions      = require(__dirname + '/lib/cl-rpc');
 	os           = require('os'),
 	socketIO     = require('socket.io');
 
-var homeURL = '/',
-	port = 8080,
-	user = process.env.USER;
+var user = process.env.USER,
+	homeURL = argv.multi ? '/' + user + '/' : '/',
+	port = argv.multi ? process.getuid() : 8080;
 
-if (argv.multi) {
-	homeURL = '/' + user + '/';
-	port = process.getuid();
-}
-
+var log = false;
 // hijack console.log
 var oldConsolelog = console.log;
 console.log = function (message) {
 	oldConsolelog.apply(console, arguments);
-	if (io) {io.emit("log", message);}
+	if (io && log) {io.emit("log", message);}
 };
 
 var separator = "*******************************************************************************";
@@ -136,8 +133,9 @@ var cacheExists,
 function testCache() {
 	cacheExists = fs.existsSync(jsFiles);
 	if (!cacheExists && !browserGet) {
-		browserGet = browserify(__dirname + '/lib/browserify.js', 
-			browserify.settings[argv.debug ? 'debug' : 'production']);
+		browserify.settings('transform', ['cssify']);
+		browserify.settings.mode = argv.debug ? 'development' : 'production';
+		browserGet = browserify(__dirname + '/lib/browserify.js');
 	}
 }
 
@@ -181,21 +179,34 @@ rpc.post('/upload', function(req, res) {
 .get('/exists', function (req, res) {
 	var path = req.query.path;
 	fs.exists(libPath.join(deskDir, path), function (exists) {
-		console.log('exists : ' + path	+ ' : ' + exists);
-		res.json({exists : exists});
+		res.json(exists);
 	});
 })
 .get('/ls', function (req, res) {
-	var path = libPath.normalize(req.query.path) + '/';
-	actions.validatePath(path, function (error) {
-		if (error) {
-			res.json({error : error});
-			return;
+	var path = libPath.normalize(req.query.path);
+	var realDir = libPath.join(deskDir, path);
+	async.waterfall([
+		function (callback) {
+			actions.validatePath(path, callback);
+		},
+
+		function (callback) {
+			fs.readdir(realDir, callback)
+		},
+
+		function (files, callback) {
+			async.map(files, function (file, callback) {
+				fs.stat(libPath.join(realDir, file), function (err, stats) {
+					callback(null, {name : file, size : stats.size,
+							isDirectory : stats.isDirectory(),
+							mtime : stats.mtime.getTime()});
+				});
+			}, callback);
+		}],
+		function (error, files) {
+			res.send(files);
 		}
-		actions.getDirectoryContent(path, function (message) {
-			res.send(message);
-		});
-	});
+	);
 })
 .get('/download', function (req, res) {
 	var file = req.query.file;
@@ -243,7 +254,7 @@ io.on('connection', function(socket) {
 	var client;
 	dns.reverse(socket.client.conn.request.headers['x-forwarded-for'] 
 			|| socket.handshake.address, function (err, domains) {
-		client = domains.join(" ");
+		client = (domains || ["no_domain"]).join(" ");
 		console.log('a user connected : ' + client);
 	});
 	socket.on('disconnect', function(){
@@ -254,6 +265,7 @@ io.on('connection', function(socket) {
 			io.emit("action finished", response);
 		});
 	});
+	socket.on('setLog', function(value){log = value;});
 });
 
 actions.on("actionsUpdated", function () {io.emit("actions updated");});

@@ -9,8 +9,14 @@ qx.Class.define("desk.MPRContainer",
 {
     extend : qx.ui.container.Composite,
 
-	construct : function(file, options, callback)
-	{
+	/**
+	* constructor
+	* @param file {String} : file to visualize
+	* @param options {Object} : see desk.MPRContainer.addFile() for description
+	* @param callback {Function} : callback when done.
+	* @param context {Object} : optional callback context
+	*/
+	construct : function(file, options, callback, context) {
         this.base(arguments);
         this.setLayout(new qx.ui.layout.VBox());
 
@@ -55,7 +61,7 @@ qx.Class.define("desk.MPRContainer",
 
 		this.initViewsLayout();
 		if (file) {
-			this.addVolume(file, options, callback);
+			this.addVolume(file, options, callback, context);
 		}
 	},
 
@@ -75,11 +81,21 @@ qx.Class.define("desk.MPRContainer",
 	},
 
 	events : {
+		/**
+		* Fired whenever fullscreen is activated/deactivated
+		*/
 		"switchFullScreen" : "qx.event.type.Data",
+
+		/**
+		* Fired whenever a volume os removed from the viewer
+		*/
 		"removeVolume" : "qx.event.type.Data"
 	},
 
 	properties : {
+		/**
+		* Defines the views layout "123", "321", etc... default : "123"
+		*/
 		viewsLayout : { init : "123", check: "String", event : "changeViewsLayout", apply : "__applyViewsLayout"}
 	},
 
@@ -94,41 +110,43 @@ qx.Class.define("desk.MPRContainer",
 		__viewsNames : ["Axial", "Sagittal", "Coronal"],
 		__nbUsedOrientations : null,
 
-        /**
-        * visualizes the output of an action whenever it is updated
-        * @param action {desk.Action} : action to watch
-        * @param file {String} : output file to visualize (without path)
-        * @param options {Object} : options object containing settings
-        * such as imageFormat (0 or 1), label (text), visible (bool)
-        */
-        watchAction : function (action, file, options, callback) {
-            var volume;
-            var currentActionId = -1;
-            action.addListener('actionTriggered', function (e) {
+		/**
+		* visualizes the output of an action whenever it is updated
+		* @param action {desk.Action} : action to watch
+		* @param file {String} : output file to visualize (without path)
+		* @param options {Object} : options object containing settings
+		* such as imageFormat (0 or 1), label (text), visible (bool)
+		* @param callback {Function} : callback when updated.
+		* @param context {Object} : optional callback context
+		*/
+		watchAction : function (action, file, options, callback, context) {
+			var volume;
+			var currentActionId = -1;
+			action.addListener('actionTriggered', function (e) {
 				var actionId = e.getData();
 				if (currentActionId < actionId) {
 					currentActionId = actionId;
 				}
-            }, this);
+			}, this);
 
-            action.addListener('actionUpdated', function (e) {
+			action.addListener('actionUpdated', function (e) {
 				var actionId = e.getData();
 				if (currentActionId !== actionId) {
 					// ignore this update as the action has been triggered since
 					return;
 				}
-                if (volume) {
-                    this.removeVolume(volume);
-                }
-                volume = this.addVolume(action.getOutputDirectory() + file, options, callback);
-            }, this);
+				if (volume) {
+					this.removeVolume(volume);
+				}
+				volume = this.addVolume(action.getOutputDirectory() + file, options, callback, context);
+			}, this);
 
-            this.addListener('removeVolume', function (e) {
-                if (e.getData() === volume) {
-                    volume = null;
-                }
-            });
-        },
+			this.addListener('removeVolume', function (e) {
+				if (e.getData() === volume) {
+					volume = null;
+				}
+			});
+		},
 
 		/** Returns the file corresponding to the given volume
 		 * @param volume {qx.ui.container.Composite}  volume
@@ -137,7 +155,10 @@ qx.Class.define("desk.MPRContainer",
 		getVolumeFile : function (volume) {
 			return volume.getUserData('file');
 		},
-		
+
+		/** Returns the grid containing viewers
+		 * @return {qx.ui.container.Composite} grid container
+		 */
 		getVolListGridContainer : function() {
 			var gridCoor = this.__gridCoords.volList;
 			this.__gridContainer.setUserData("freeRow", gridCoor.row);
@@ -161,12 +182,18 @@ qx.Class.define("desk.MPRContainer",
 			return this.__viewers;
 		},
 
-		__renderAll : function () {
+		/**
+		 * Triggers rendering on all viewers
+		 */
+		 render : function () {
 			this.__viewers.forEach(function (viewer) {
 				viewer.render();
 			});
 		},
 
+		/**
+		 * Reorders volumes rendering
+		 */
 		__reorderMeshes : function () {
 			this.__volumes.getChildren().forEach(function (volume, rank) {
 				this.getVolumeSlices(volume).forEach(function (slice) {
@@ -178,11 +205,14 @@ qx.Class.define("desk.MPRContainer",
 					}
 				});
 			}, this);
-			this.__renderAll();
+			this.render();
 		},
 
         __scroll : null,
 
+		/**
+		 * Creates the volumes list
+		 */
 		__createVolumesList : function () {
 			this.__scroll  = new qx.ui.container.Scroll();
 			var container = new qx.ui.container.Composite(new qx.ui.layout.VBox(5));
@@ -197,12 +227,15 @@ qx.Class.define("desk.MPRContainer",
 			this.__scroll.add(container);
 		},
 
+		/**
+		 * Creates the viewers
+		 * @param options {Object} viewer options
+		 */
 		__addViewers : function (options) {
 			this.__viewers = [];
 			for(var i = 0; i < this.__nbUsedOrientations; i++) {
 				var sliceView = new desk.SliceView(i, options);
 				this.__viewers.push(sliceView);
-				sliceView.setOrientPlane(this.__viewsNames[i]);
 				sliceView.addListener("changeCrossPosition", this.__onChangeCrossPosition, this);
 				sliceView.addListener("changeCameraZ", this.__onChangeCameraZ, this);
 				this.__setupMaximize(sliceView);
@@ -216,6 +249,10 @@ qx.Class.define("desk.MPRContainer",
 			}
 		},
 
+		/**
+		 * setups viewer maximize buttons on a viewer
+		 * @param sliceView {desk.SliceView} viewer to setup
+		 */
 		__setupMaximize : function (sliceView) {
 			sliceView.addListener('keypress', function (e) {
 				if (e.getKeyIdentifier() === 'P') {
@@ -224,6 +261,10 @@ qx.Class.define("desk.MPRContainer",
 			},this);
 		},
 
+		/**
+		 * toggles maximize on/off
+		 * @param button {qx.ui.form.Button} button
+		 */
 		__toggleMaximize : function (button) {
 			if (button.getLabel() === "+") {
 				this.maximizeViewer(button.getUserData("sliceView").getOrientation());
@@ -232,30 +273,44 @@ qx.Class.define("desk.MPRContainer",
 			}			
 		},
 
+		/**
+		 * Fired whenever a maximize button is pressed
+		 * @param e {qx.event.type.Event} button event
+		 */
 		__onMaximizeButtonClick : function (e) {
 			this.__toggleMaximize(e.getTarget());
 		},
 
+		/**
+		 * Fired whenever the cross is displaced
+		 * @param e {qx.event.type.Event} event
+		 */
 		__onChangeCrossPosition : function (e) {
 			this.__viewers.forEach(function (viewer) {
 				viewer.setCrossPosition(e.getTarget().getCrossPosition());
 			});
 		},
 
+		/**
+		 * Fired whenever the camera Z changes
+		 * @param e {qx.event.type.Event} event
+		 */
 		__onChangeCameraZ : function (e) {
 			var z = e.getData();
 			this.__viewers.forEach (function (viewer) {
-				if (viewer != e.getTarget()) {
-					var oldZ = viewer.getCameraZ();
-					if (oldZ * z < 0) {
-						viewer.setCameraZ(-z);
-					} else {
-						viewer.setCameraZ(z);
-					}
+				if (viewer === e.getTarget()) return;
+				if (viewer.getCameraZ() * z < 0) {
+					viewer.setCameraZ(-z);
+				} else {
+					viewer.setCameraZ(z);
 				}
 			});
 		},
 
+		/**
+		 * changes the views layout
+		 * @param layout {String} the layout ("123", "231", ...)
+		 */
 		__applyViewsLayout : function (layout) {
 			this.__gridContainer.removeAll();
 			if (this.__orientationContainer) {
@@ -283,13 +338,16 @@ qx.Class.define("desk.MPRContainer",
 		__orientationButtonGroup : null,
 		__layoutSelectBoxes : null,
 
+		/**
+		 * Fired whenever a selection changes in the orientation window
+		 * @param event {qx.event.type.Event} event
+		 */
 		__onChangeSelect : function(event) {
 			var label = event.getData()[0].getLabel();
 			var box = event.getTarget();
 			var boxes = this.__layoutSelectBoxes;
 
 			var viewer = this.__viewers[_.indexOf(boxes, box)];
-			viewer.setOrientPlane(label);
 
 			for(var i = 0; i < this.__nbUsedOrientations; i++) {
 				if((boxes[i].getSelection()[0].getLabel() === label)
@@ -330,6 +388,7 @@ qx.Class.define("desk.MPRContainer",
 		/**
 		 * Returns the window where the user can change different
 		 * orientation parameters
+		 * @return {qx.ui.window.Window} the window
 		 */
 		getOrientationWindow : function () {
 			if (this.__orientationWindow) {
@@ -437,10 +496,21 @@ qx.Class.define("desk.MPRContainer",
 		/**
 		 * returns an array containing volumes slices for a loaded volume
 		 * @param volume {qx.ui.container.Composite} : volume
-		 * @return {Array} array of volume slices
+		 * @return {Array} array of desk.VolumeSlice
 		 */
 		getVolumeSlices : function (volume) {
 			return volume.getUserData("slices");
+		},
+
+		/**
+		 * returns an array containing meshes for a loaded volume
+		 * @param volume {qx.ui.container.Composite} : volume
+		 * @return {Array} array of THREE.Mesh
+		 */
+		getVolumeMeshes : function (volume) {
+			return this.getVolumeSlices(volume).map(function (slice) {
+				return slice.getUserData("mesh");
+			});
 		},
 
         /**
@@ -448,15 +518,24 @@ qx.Class.define("desk.MPRContainer",
 		* @param file {String} : file to load
         * @param options {Object} : options object containing settings
         * such as imageFormat (0 or 1), label (text), visible (bool)
-        * @param callback {Function} : callback when loaded.
+        * @param callback {Function} : callback when loaded. First 
+        *  callback argument is the error, the second is the volume widget
+        * @param context {Object} : optional callback context
         * @return {qx.ui.container.Composite}  volume item
 		*/
-		addVolume : function (file, options, callback) {
+		addVolume : function (file, options, callback, context) {
+			if (typeof options === "function") {
+				callback = options;
+				options = {};
+				context = callback;
+			}
+			callback = callback || function () {};
+
 			if (desk.FileSystem.getFileExtension(file) === "json") {
 				desk.FileSystem.readFile(file, function (err, viewpoints) {
 					this.setViewPoints(viewpoints.viewpoints);
 				}.bind(this));
-				return;
+				return null;
 			}
 
 			var volumeSlices = [];
@@ -530,10 +609,7 @@ qx.Class.define("desk.MPRContainer",
 			async.eachSeries(this.__viewers,
 				function (viewer, callback) {
 					volumeSlices[viewer.getOrientation()] = viewer.addVolume(
-							file,
-							options,
-							function (volumeSlice) {callback();}
-						);
+							file, options, callback);
 				},
 				function (err) {
 					if (options.visible !== undefined) {
@@ -546,9 +622,7 @@ qx.Class.define("desk.MPRContainer",
 						this.removeVolume(volumeListItem);
 					}
 					this.__reorderMeshes();
-					if (typeof callback === 'function') {
-						callback(volumeListItem);
-					}					
+					callback.call(context, err, volumeListItem);
 				}.bind(this)
 			);
 
@@ -560,10 +634,10 @@ qx.Class.define("desk.MPRContainer",
 			var hideShowCheckbox = new qx.ui.form.CheckBox();
 			hideShowCheckbox.set({value : true,toolTipText : "visible/hidden"});
 			hideShowCheckbox.addListener( "changeValue", function (e) {
-				for ( var i = 0; i < volumeSlices.length; i++ ) {
-					volumeSlices[i].getUserData("mesh").visible = e.getData();
-				}
-				this.__renderAll();
+				volumeSlices.forEach(function (volumeSlice) {
+					volumeSlice.getUserData("mesh").visible = e.getData();
+				});
+				this.render();
 			}, this );
 
 			// create file format change widget
@@ -584,9 +658,9 @@ qx.Class.define("desk.MPRContainer",
 
 			fileFormatBox.addListener("changeSelection", function ( ) {
 				imageFormat=fileFormatBox.getSelection()[0].getUserData("imageFormat");
-				for (var i=0;i<volumeSlices.length;i++) {
-					volumeSlices[i].setImageFormat(imageFormat);
-				}
+				volumeSlices.forEach(function (slice) {
+					slice.setImageFormat(imageFormat);
+				});
 			});
 
 			// create opacity widget
@@ -594,56 +668,48 @@ qx.Class.define("desk.MPRContainer",
 			opacitySlider.set({value : opacity*100,
 					toolTipText : "change opacity"});
 			opacitySlider.addListener("changeValue", function(event) {
-				var opacity = event.getData() / 100;
-				for (var i = 0; i < volumeSlices.length; i++) {
-					volumeSlices[i].setOpacity(opacity);
-				}
+				volumeSlices.forEach(function (slice) {
+					slice.setOpacity(event.getData() / 100);
+				});
 			},this);
 			
 			////Create brightness/contrast fixing
 			var brightnessButton = new qx.ui.form.Button(null, "desk/Contrast_Logo_petit.PNG");
 			brightnessButton.set({toolTipText : "Click and drag to change brightnes, right-click to reset brightness"});
 
-			var clicked = false;
 			var x, y;
 
-			brightnessButton.addListener("mousedown", function(event)	{
+			brightnessButton.addListener("pointerdown", function(event)	{
 				if (event.isRightPressed()) {
-					for (var i = 0; i < volumeSlices.length; i++) {
-						volumeSlices[i].setBrightnessAndContrast(0, 1);
+					volumeSlices.forEach(function (slice) {
+						slice.setBrightnessAndContrast(0, 1);
+					});
 //						updateWindowLevel();
-					}
 				} else {
 					x = event.getScreenLeft();
 					y = event.getScreenTop();
-					brightnessButton.capture();
-					clicked = true;
 				}
 			}, this);
 
-			brightnessButton.addListener("mousemove", function(event) {
-				if (clicked) {
-					var newX = event.getScreenLeft();
-					var newY = event.getScreenTop();
-					var deltaX = newX - x;
-					var deltaY = newY - y;
-					var contrast = volumeSlices[0].getContrast();
-					var brightness = volumeSlices[0].getBrightness();
+			brightnessButton.addListener("pointermove", function(event) {
+				if (!brightnessButton.isCapturing()) {
+					return;
+				}
+				var newX = event.getScreenLeft();
+				var newY = event.getScreenTop();
+				var deltaX = newX - x;
+				var deltaY = newY - y;
+				var contrast = volumeSlices[0].getContrast();
+				var brightness = volumeSlices[0].getBrightness();
 
-					brightness -= deltaY / 300;
-					contrast *= 1 + deltaX / 300;
-					x = newX;
-					y = newY;
-					for (var i = 0; i < volumeSlices.length; i++) {
-						volumeSlices[i].setBrightnessAndContrast(brightness,contrast);
-					}
+				brightness -= deltaY / 300;
+				contrast *= 1 + deltaX / 300;
+				x = newX;
+				y = newY;
+				volumeSlices.forEach(function (slice) {
+					slice.setBrightnessAndContrast(brightness,contrast);
+				});
 //					updateWindowLevel();
-				}
-			}, this);
-
-			brightnessButton.addListener("mouseup", function(event) {
-				brightnessButton.releaseCapture();
-				clicked = false;
 			}, this);
 
 			var scalarBounds;
@@ -681,8 +747,14 @@ qx.Class.define("desk.MPRContainer",
 			return volumeListItem;
 		},
 
-		__getVolumeContextMenu : function (volumeListItem) {
-				//context menu to edit meshes appearance
+
+		/**
+		 * creates a context menu
+		 * @param volumeListItem {qx.ui.container.Composite} : volume
+		 * @return {qx.ui.menu.Menu} the menu
+		 */
+		 __getVolumeContextMenu : function (volumeListItem) {
+			//context menu to edit meshes appearance
 			var menu = new qx.ui.menu.Menu();
 			var propertiesButton = new qx.ui.menu.Button("properties");
 			propertiesButton.addListener("execute", function (){
@@ -724,7 +796,7 @@ qx.Class.define("desk.MPRContainer",
 
 
 			if(this.__standalone) {
-				if (desk.Actions.getInstance().getPermissionsLevel()>0) {
+				if (desk.Actions.getInstance().getSettings().permissions) {
 					var segmentButton = new qx.ui.menu.Button("segment(GC)");
 					segmentButton.addListener("execute", function () {
 						new desk.SegTools(this, this.getVolumeFile(volumeListItem));
@@ -765,7 +837,7 @@ qx.Class.define("desk.MPRContainer",
 					this.__volumes.addAt(volumeListItem, index+1);
 				}
 				this.__reorderMeshes();
-				this.__renderAll();
+				this.render();
 				},this);
 			menu.add(moveForwardButton);
 
@@ -783,7 +855,7 @@ qx.Class.define("desk.MPRContainer",
 					this.__volumes.addAt(volumeListItem, index-1);
 				}
 				this.__reorderMeshes();
-				this.__renderAll();
+				this.render();
 				},this);
 			menu.add(moveBackwardButton);
 
@@ -881,7 +953,11 @@ qx.Class.define("desk.MPRContainer",
 			}
 		},
 
-		__getToolBar : function () {
+		/**
+		 * creates the top toolbar
+		 * @return {qx.ui.container.Composite} the toolbar
+		 */
+		 __getToolBar : function () {
 			var container = new qx.ui.container.Composite();
 			container.setLayout(new qx.ui.layout.HBox());
 			container.add(this.__getLinkButton());
@@ -891,6 +967,10 @@ qx.Class.define("desk.MPRContainer",
 			return (container);
 		},
 
+		/**
+		 * creates the orientation button
+		 * @return {qx.ui.form.Button} the button
+		 */
 		__getOrientationButton : function () {
 			var button = new qx.ui.form.Button("Layout/Orientation");
 			button.addListener ("execute", function () {
@@ -900,7 +980,11 @@ qx.Class.define("desk.MPRContainer",
 			return (button);
 		},
 
-		__getChangeLayoutContainer : function () {
+		/**
+		 * creates the change layout container
+		 * @return {qx.ui.container.Composite} the container
+		 */
+		 __getChangeLayoutContainer : function () {
 			var gridContainer = new qx.ui.container.Composite();
 			var gridLayout = new qx.ui.layout.Grid();
 			for (var i = 0; i < this.__nbUsedOrientations; i++) {
@@ -957,10 +1041,6 @@ qx.Class.define("desk.MPRContainer",
 				viewLabel.setFont(font);
 				qx.util.DisposeUtil.disposeTriggeredBy(font, this);
 				labelsContainer.add(viewLabel);
-					// Shows plane name...unused and unfinished...
-					//~ var orientPlaneLabel = new qx.ui.basic.Label(_this.__viewsNames[i]);
-					//~ orientPlaneLabel.bind("value", _this.__viewers[i], "orientPlane");
-					//~ labelsContainer.add(orientPlaneLabel);
 				gridContainer.add(labelsContainer, viewGridCoor.viewers[i]);
 			}
 			return (gridContainer);
@@ -981,6 +1061,10 @@ qx.Class.define("desk.MPRContainer",
 			}, this);
 		},
 
+		/**
+		 * creates the save camera viewpoint button
+		 * @return {qx.ui.form.Button} the button
+		 */
 		__getSaveViewButton : function () {
 			var button = new qx.ui.form.Button("save view");
 			button.addListener("execute", function () {
@@ -997,6 +1081,10 @@ qx.Class.define("desk.MPRContainer",
 			return button;
 		},
 
+		/**
+		 * creates the 'link' button
+		 * @return {qx.ui.form.Button} the button
+		 */
 		__getLinkButton : function () {
 			var menu = new qx.ui.menu.Menu();
 			var unLinkButton = new qx.ui.menu.Button("unlink");
@@ -1034,10 +1122,14 @@ qx.Class.define("desk.MPRContainer",
 			return (label);
 		},
 
+		/**
+		 * creates the 'colors' window
+		 * @param volumeListItem {qx.ui.container.Composite} the volume to modify
+		 */
 		__createColormapWindow : function(volumeListItem) {
 			var slices = this.getVolumeSlices(volumeListItem);
 
-			var window = new qx.ui.window.Window().set ({
+			var win = new qx.ui.window.Window().set ({
 				caption : "colors for " + slices[0].getFileName(),
 				layout : new qx.ui.layout.HBox(),
 				showClose : true,
@@ -1059,7 +1151,7 @@ qx.Class.define("desk.MPRContainer",
 			}
 
 			var group = new qx.ui.form.RadioButtonGroup().set({layout : new qx.ui.layout.VBox()});
-			window.add(group);
+			win.add(group);
 
 			[{name : "reds", lut : [ramp, zeros, zeros]},
 				{name : "greens", lut : [zeros, ramp, zeros]},
@@ -1083,10 +1175,14 @@ qx.Class.define("desk.MPRContainer",
 					slice.setLookupTables(e.getData()[0].getUserData('lut'));
 				})
 			});
-			window.open();
-			window.center();
+			win.open();
+			win.center();
 		},
 
+		/**
+		 * Fired whenever a widget is droped on the viewer
+		 * @param e {qx.event.type.Drag} drap/drop event
+		 */
 		__onDrop : function (e) {
 			if (e.supportsType("fileBrowser")) {
 				e.getData("fileBrowser").getSelectedFiles().forEach(function(file) {

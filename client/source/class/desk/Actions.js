@@ -68,6 +68,9 @@ qx.Class.define("desk.Actions",
 		__runingActions : [],
 		__remainingInits : 2,
 
+		/**
+		* Creates the action menu, visible on all file browsers
+		*/
 		__createActionsMenu : function () {
 			var menu = new qx.ui.menu.Menu();
 			var forceButton = new qx.ui.menu.CheckBox("Disable cache");
@@ -95,6 +98,10 @@ qx.Class.define("desk.Actions",
 			}, this);
 		},
 
+		/**
+		* Creates the password change button
+		* @return {qx.ui.menu.Button} the button
+		*/
 		__getPasswordButton : function () {
 			var button = new qx.ui.menu.Button('Change password');
 			button.setBlockToolTip(false);
@@ -118,6 +125,10 @@ qx.Class.define("desk.Actions",
 			return button;
 		},
 
+		/**
+		* Creates the server log button
+		* @return {qx.ui.menu.Button} the button
+		*/
 		__getServerLogButton : function () {
 			var button = new qx.ui.menu.Button('Server log');
 			button.setBlockToolTip(false);
@@ -126,6 +137,7 @@ qx.Class.define("desk.Actions",
 				function displayLog(data) {
 					log.log(data, 'yellow');
 				}
+				this.__socket.emit('setLog', true);
 				var win = new qx.ui.window.Window('Server log');
 				win.setLayout(new qx.ui.layout.HBox());
 				var log = new desk.LogContainer().set({backgroundColor : 'black'});
@@ -134,6 +146,7 @@ qx.Class.define("desk.Actions",
 				this.__socket.on("log", displayLog);
 				win.addListener('close', function () {
 					this.__socket.removeListener('log', displayLog);
+					this.__socket.emit('setLog', false);
 				}, this);
 				win.open();
 				win.center();
@@ -141,6 +154,10 @@ qx.Class.define("desk.Actions",
 			return button;
 		},
 
+		/**
+		* Creates the console log button
+		* @return {qx.ui.menu.Button} the button
+		*/
 		__getConsoleLogButton : function () {
 			var button = new qx.ui.menu.Button('Console log');
 			button.setBlockToolTip(false);
@@ -166,7 +183,7 @@ qx.Class.define("desk.Actions",
 		},
 
 		__actionMenu : null,
-		__actions : null,
+		__settings : null,
 		__ongoingActions : null,
 		__settingsButton : null,
 
@@ -174,22 +191,12 @@ qx.Class.define("desk.Actions",
 
 		__currentFileBrowser : null,
 
-		__permissionsLevel : 0,
-
 		/**
-		* Returns the permission level
-		* @return {Int} the permissions level
+		* Returns the complete settings object
+		* @return {Object} settings
 		*/	
 		getSettings : function () {
-			return JSON.parse(JSON.stringify(this.__actions));
-		},
-
-		/**
-		* Returns the permission level
-		* @return {Int} the permissions level
-		*/	
-		getPermissionsLevel : function () {
-			return this.__permissionsLevel;
+			return JSON.parse(JSON.stringify(this.__settings));
 		},
 
 		/**
@@ -198,7 +205,7 @@ qx.Class.define("desk.Actions",
 		* @return {Object} action parameters as a JSON object
 		*/	
 		getAction : function (name) {
-			var action = this.__actions.actions[name];
+			var action = this.__settings.actions[name];
 			if (action) {
 				return JSON.parse(JSON.stringify(action));
 			} else {
@@ -263,6 +270,10 @@ qx.Class.define("desk.Actions",
 			});
 		},
 
+		/**
+		* Fired whenever an action is finished
+		* @param response {Object} the server response
+		*/
 		__onActionEnd : function (response) {
 			var params = this.__runingActions[response.handle];
 			if (!params) return;
@@ -293,7 +304,6 @@ qx.Class.define("desk.Actions",
 		* @param params {Object} object containing action aprameters
 		* @param callback {Function} callback for when the action has been performed
 		* @param context {Object} optional context for the callback
-		* @return {String} action handle for managemenent (kill etc...)
 		*/
 		launchAction : function (params, callback, context) {
 			desk.Actions.init(function () {
@@ -301,6 +311,13 @@ qx.Class.define("desk.Actions",
 			}, this);
 		},
 
+		/**
+		* launches an action
+		* @param params {Object} object containing action aprameters
+		* @param callback {Function} callback for when the action has been performed
+		* @param context {Object} optional context for the callback
+		* @return {String} action handle for managemenent (kill etc...)
+		*/
 		__launchAction : function (params, callback, context) {
 			params = JSON.parse(JSON.stringify(params));
 			params.handle = Math.random().toString();
@@ -314,13 +331,19 @@ qx.Class.define("desk.Actions",
 				POST : params
 			};
 
-            setTimeout(function () {this.__addActionToList(parameters);}.bind(this), 1230);
+            setTimeout(function () {
+				this.__addActionToList(parameters);
+			}.bind(this), Math.max(1000, (this.__runingActions.length - 20) * 1000));
 
 			this.__socket.emit('action', params);
 			this.__runingActions[params.handle] = parameters;
 			return params.handle;
 		},
 
+		/**
+		* Adds the action widget to the list of runing actions
+		* @param parameters {Object} action parameters
+		*/
 		__addActionToList : function(parameters) {
 			if (parameters.actionFinished) {
 				return;
@@ -354,10 +377,15 @@ qx.Class.define("desk.Actions",
 			this.__ongoingActions.add(item);
 		},
 
+
+		/**
+		* fired when an action is launched via the action menu
+		* @param e {qx.event.type.Event} button event
+		*/
 		__launch : function (e) {
 			var name = e.getTarget().getLabel();
 			var action = new desk.Action(name, {standalone : true});
-			_.some(this.__actions.actions[name].parameters, function (param) {
+			_.some(this.__settings.actions[name].parameters, function (param) {
 				if ((param.type !== "file") && (param.type !== "directory")) {
 					return false;
 				}
@@ -369,38 +397,39 @@ qx.Class.define("desk.Actions",
 			action.setOutputDirectory("actions/");
 		},
 
+		/**
+		* custom comparator for the sort operator
+		* @param a {String} first value to compare
+		* @param b {String} second value to compare
+		* @return {Boolean} true if a < b
+		*/
 		__myComparator : function (a, b) {
 			return a.toLowerCase().localeCompare(b.toLowerCase());
 		},
 
+		/**
+		* Loads actions.json from server and refreshes the action menu
+		* @param callback {function} callback when done
+		*/
 		__populateActionMenu : function(callback) {
 			desk.FileSystem.readFile('actions.json', function (error, settings) {
 				this.__actionMenu = new qx.ui.menu.Menu();
-				this.__actions = settings;
-				this.__permissionsLevel = parseInt(settings.permissions, 10);
-				if (this.__permissionsLevel) {
+				this.__settings = settings;
+
+				if (this.__settings.permissions) {
 					this.__createActionsMenu();
 				}
 
-				var actions = this.__actions.actions;
+				var actions = this.__settings.actions;
 
 				var libs = {};
 				Object.keys(actions).forEach(function (actionName) {
 					var action = actions[actionName];
-					var permissionLevel = parseInt(action.permissions, 10);
-					if (permissionLevel !== 0) {
-						permissionLevel = 1;
-					}
-					if (this.__permissionsLevel < permissionLevel) {
-						// skip this action as we do not have enough permissions
-						return;
-					}
-
 					if (!libs[action.lib]) {
 						libs[action.lib] = [];
 					}
 					libs[action.lib].push(actionName);
-				});
+				}, this);
 
 				Object.keys(libs).sort(this.__myComparator).forEach(function (lib) {
 					var menu = new qx.ui.menu.Menu();

@@ -10,7 +10,7 @@ var	async       = require('async'),
 	os          = require('os'),
 	prettyPrint = require('pretty-data').pd,
 	winston     = require('winston'),
-	_           = require('underscore');
+	_           = require('lodash');
 
 var cacheCleaner = require('./cacheCleaner.js');
 
@@ -37,7 +37,8 @@ var actionsCounter = 0;
 var maxAge = ms('30d');
 
 // object storing all currently running actions
-var ongoingActions = {};
+var ongoingActions = {}; // with 'handle' as index
+var ongoingActions2 = {}; // with actionParameters hash as index
 
 // one watcher for each json configuration file or directory
 var watchers = [];
@@ -91,7 +92,7 @@ includeFile = function (file) {
 		var dir = fs.realpathSync(libpath.dirname(file));
 		Object.keys(localActions).forEach(function (name) {
 			var action = localActions[name];
-			action.lib = lib;
+			action.lib = action.lib || lib;
 
             // backwards compatibility
             if (action.attributes) {
@@ -200,10 +201,23 @@ function updateSync() {
 	});
 	cleanCache();
 
-	// export actions.json
+	// filter actions according to permissions
+	actions = _.pick(actions, function(action) {
+		var perm = action.permissions;
+		if (perm !== 0) {
+			perm = 1;
+		}
+		return permissions >= perm;
+	});
+
+	// export filtered actions.json
 	fs.writeFileSync(libpath.join(filesRoot, "actions.json"),
-		prettyPrint.json(JSON.stringify({actions : actions ,
-		permissions : permissions, dataDirs : dataDirs})));
+		prettyPrint.json({
+			actions : actions,
+			permissions : permissions,
+			dataDirs : dataDirs
+		})
+	);
 
 	exports.emit("actionsUpdated");
 };
@@ -309,12 +323,12 @@ var actionsDirectoriesQueue = async.queue(function (task, callback) {
 }, 1);
 
 function RPC(POST, callback) {
-	actionsCounter++;
+	this.id = actionsCounter++;
 
 	this.POST = POST;
 	this.inputMTime = -1;
 
-	var header = "[" + actionsCounter + "] ";
+	var header = "[" + this.id + "] ";
 	this.log = function (msg) {myLog(header + msg)};
 
 	this.response = {};
@@ -328,6 +342,9 @@ function RPC(POST, callback) {
 
 	this.commandLine = "nice " + (this.action.executable || this.action.command);
 	this.log("handle : " + this.POST.handle);
+
+	// array used to store concurrent similar actions
+	this.similarActions = [];
 
 	async.series([
 		this.parseParameters.bind(this),
@@ -581,8 +598,32 @@ RPC.prototype.executeAction = function (callback) {
 	}
 
 	var after = function (err, stdout, stderr) {
-		this.afterExecution(err, stdout, stderr, callback);			
+		this.afterExecution(err, stdout, stderr, callback);
+		delete ongoingActions2[hash];
+		this.similarActions.forEach(function (opts) {
+			opts.RPC.afterExecution(err, stdout, stderr, opts.callback);
+			this.log("triggering completion for same action [" + opts.RPC.id + "]");
+		}.bind(this));
 	}.bind(this);
+
+	var shasum = crypto.createHash('sha1');
+	shasum.update(this.parametersString + this.outputDirectory);
+	var hash = shasum.digest('hex');
+	var opts = {
+		POST : JSON.parse(JSON.stringify(this.POST)),
+		RPC : this,
+		callback : callback
+	};
+
+	ongoingActions[this.POST.handle] = opts;
+
+	var existingOpts = ongoingActions2[hash];
+	if (existingOpts) {
+		opts.childProcess = existingOpts.childProcess;
+		existingOpts.RPC.similarActions.push(opts);
+		this.log("same as action [" + existingOpts.RPC.id + "], wait for its completion");
+		return;
+	}
 
 	var js = this.action.module;
 	if ( typeof (js) === "object" ) {
@@ -593,10 +634,8 @@ RPC.prototype.executeAction = function (callback) {
 		return;
 	}
 
-	var handle = {POST : JSON.parse(JSON.stringify(this.POST))};
-
-	var child = handle.childProcess = exec(this.commandLine, commandOptions, after);
-	ongoingActions[this.POST.handle] = handle;
+	var child = opts.childProcess = exec(this.commandLine, commandOptions, after);
+	ongoingActions2[hash] = opts;
 
 	if (this.outputDirectory) {
 		this.logStream = fs.createWriteStream(libpath.join(filesRoot, this.outputDirectory, "action.log"));
@@ -685,36 +724,4 @@ RPC.prototype.afterExecution = function(err, stdout, stderr, callback) {
 	}
 }
 
-exports.getDirectoryContent = function (path, callback) {
-	myLog('listDir : ' + path);
-	async.waterfall([
-		function (callback) {
-			exports.validatePath(path, callback);
-		},
-
-		function (callback) {
-			var realDir = libpath.join(filesRoot, path);
-			fs.readdir(realDir, function (err, files) {
-				if (err) {
-					callback (err);
-					return;
-				}
-
-				async.map(files, function (file, callback) {
-						fs.stat(libpath.join(realDir, file), function (err, stats) {
-							callback(null, {name : file, size : stats.size,
-								isDirectory : stats.isDirectory(),
-								mtime : stats.mtime.getTime()}
-							);
-						});
-					},
-					callback
-				);
-			});
-		}],
-		function (error, files) {
-			callback(files);
-		}
-	);
-};
 exports.includeDirectory(libpath.join(__dirname,'includes'));
